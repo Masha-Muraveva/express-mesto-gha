@@ -1,11 +1,14 @@
 const mongoose = require('mongoose');
+const validator = require('validator');
 
 const cardSchema = new mongoose.Schema({
   name: {
     type: String,
     require: true,
-    minlength: 2,
-    maxlength: 30,
+    validate: {
+      validator: ({ length }) => length >= 2 && length <= 30,
+      message: 'Имя карточки должно быть длиной от 2 до 30 символов',
+    },
   },
   owner: {
     type: mongoose.Schema.Types.ObjectId,
@@ -15,6 +18,10 @@ const cardSchema = new mongoose.Schema({
   link: {
     type: String,
     require: true,
+    validate: {
+      validator: (url) => validator.isURL(url),
+      message: 'Здесь должна быть указана ссылка (URL)',
+    },
   },
   likes: {
     type: [mongoose.Schema.Types.ObjectId],
@@ -25,6 +32,6 @@ const cardSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-});
+}, { versionKey: false });
 
 module.exports = mongoose.model('card', cardSchema);

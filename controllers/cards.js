@@ -1,131 +1,107 @@
+const { ValidationError } = require('mongoose').Error;
+const { CastError } = require('mongoose').Error;
+
+const Forbidden = require('../Error/Forbidden');
+const NotFound = require('../Error/NotFound');
+const BadRequest = require('../Error/BadRequest');
+
 const Card = require('../models/card');
 const {
-  CODE,
   CODE_CREATED,
-  ERROR_CODE,
-  ERROR_NOT_FOUND,
-  ERROR_INTERNAL_SERVER,
-} = require('../constants');
+} = require('../utils/constants');
 
-module.exports.getCards = (req, res) => {
-  Card.find({})
-    .then((card) => {
-      res.status(CODE).send(card);
-    })
-    .catch(() => {
-      res
-        .status(ERROR_INTERNAL_SERVER)
-        .send({
-          message: `Ошибка на сервере по умолчанию ${ERROR_INTERNAL_SERVER}`,
-        });
-    });
+module.exports.getCards = (req, res, next) => {
+  Card
+    .find({})
+    .populate(['owner', 'likes'])
+    .then((cards) => res.send({ data: cards }))
+    .catch(next);
 };
 
-module.exports.createCard = (req, res) => {
+module.exports.createCard = (req, res, next) => {
   const { name, link } = req.body;
-  const owner = req.user;
-  Card.create({ name, link, owner })
+  const { userId } = req.user;
+
+  Card
+    .create({ name, link, owner: userId })
     .then((card) => card.populate('owner'))
     .then((card) => res.status(CODE_CREATED).send({ data: card }))
-    .catch((error) => {
-      if (error.name === 'ValidationError') {
-        return res
-          .status(ERROR_CODE)
-          .send({
-            message: `Переданы некорректные данные при создании карточки ${ERROR_CODE}`,
-          });
+    .catch((err) => {
+      if (err instanceof ValidationError) {
+        next(
+          new BadRequest('Переданы некорректные данные при создании карточки'),
+        );
+      } else {
+        next(err);
       }
-      return res.status(ERROR_INTERNAL_SERVER).send({
-        message: `Ошибка на сервере по умолчанию ${ERROR_INTERNAL_SERVER}`,
-      });
     });
 };
 
-module.exports.deleteCard = (req, res) => {
+module.exports.deleteCard = (req, res, next) => {
+  const { id: cardId } = req.params;
+  const { userId } = req.user;
+
+  Card
+    .findById({ _id: cardId })
+    .then((card) => {
+      if (!card) {
+        throw new NotFound('Карточка с указанным _id не найдена');
+      }
+      const { owner: cardOwnerId } = card;
+      if (cardOwnerId.valueOf() !== userId) {
+        throw new Forbidden('Нет доступа для удаления данной карточки - её создал другой пользователь');
+      }
+      return Card.findByIdAndDelete(cardId);
+    })
+    .catch(next);
+};
+
+module.exports.likeCard = (req, res, next) => {
   const { cardId } = req.params;
-  Card.deleteOne({ _id: cardId })
+  const { userId } = req.user;
+
+  Card
+    .findByIdAndUpdate(
+      cardId,
+      { $addToSet: { likes: userId } },
+      { new: true },
+    )
     .then((card) => {
-      if (card.deletedCount !== 0) {
-        return res.send({ message: 'Карточка была удалена' });
+      if (card) {
+        return res.send({ data: card });
       }
-      return res
-        .status(ERROR_NOT_FOUND)
-        .send({
-          message: `Карточка с указанным _id не найдена ${ERROR_NOT_FOUND}`,
-        });
+      throw new NotFound('Карточка с указанным _id не найдена');
     })
-    .catch((error) => {
-      if (error.name === 'ValidationError') {
-        return res
-          .status(ERROR_CODE)
-          .send({
-            message: `Переданы некорректные данные при создании карточки ${ERROR_CODE}`,
-          });
+    .catch((err) => {
+      if (err instanceof CastError) {
+        next(new BadRequest('Переданы некорректные данные для постановки/снятия лайка'));
+      } else {
+        next(err);
       }
-      return res.status(ERROR_INTERNAL_SERVER).send({
-        message: `Ошибка на сервере по умолчанию ${ERROR_INTERNAL_SERVER}`,
-      });
     });
 };
 
-module.exports.likeCard = (req, res) => {
-  const owner = req.user._id;
-  Card.findByIdAndUpdate(
-    req.params.cardId,
-    { $addToSet: { likes: owner } },
-    { new: true },
-  )
-    .then((card) => {
-      if (!card) {
-        return res
-          .status(ERROR_NOT_FOUND)
-          .send({
-            message: `Передан несуществующий _id карточки ${ERROR_NOT_FOUND}`,
-          });
-      }
-      return res.status(CODE).send(card);
-    })
-    .catch((error) => {
-      if (error.name === 'ValidationError') {
-        return res
-          .status(ERROR_CODE)
-          .send({
-            message: `Переданы некорректные данные для постановки/снятия лайка. ${ERROR_CODE}`,
-          });
-      }
-      return res.status(ERROR_INTERNAL_SERVER).send({
-        message: `Ошибка на сервере по умолчанию ${ERROR_INTERNAL_SERVER}`,
-      });
-    });
-};
+module.exports.dislikeCard = (req, res, next) => {
+  const { cardId } = req.params;
+  const { userId } = req.user;
 
-module.exports.dislikeCard = (req, res) => {
-  const owner = req.user._id;
-  Card.findByIdAndUpdate(
-    req.params.cardId,
-    { $pull: { likes: owner } },
-    { new: true },
-  )
+  Card
+    .findByIdAndUpdate(
+      cardId,
+      { $pull: { likes: userId } },
+      { new: true },
+    )
     .then((card) => {
-      if (!card) {
-        return res
-          .status(ERROR_NOT_FOUND)
-          .send({
-            message: `Передан несуществующий _id карточки ${ERROR_NOT_FOUND}`,
-          });
+      if (card) {
+        return res.send({ data: card });
       }
-      return res.status(CODE).send(card);
+      throw new NotFound('Карточка с указанным _id не найдена');
     })
-    .catch((error) => {
-      if (error.name === 'ValidationError') {
-        return res
-          .status(ERROR_CODE)
-          .send({
-            message: `Переданы некорректные данные для постановки/снятии лайка. ${ERROR_CODE}`,
-          });
+    .catch((err) => {
+      if (err instanceof CastError) {
+        next(new BadRequest('Переданы некорректные данные для постановки/снятия лайка'));
+      } else {
+        next(err);
       }
-      return res.status(ERROR_INTERNAL_SERVER).send({
-        message: `Ошибка на сервере по умолчанию ${ERROR_INTERNAL_SERVER}`,
-      });
     });
 };
