@@ -1,7 +1,6 @@
 const BadRequest = require('../Error/BadRequest');
 const NotFound = require('../Error/NotFound');
 const User = require('../models/user');
-const ErrorHandler = require('../middlewares/errorHandler');
 
 module.exports.getUsers = (req, res, next) => {
   User
@@ -9,7 +8,7 @@ module.exports.getUsers = (req, res, next) => {
     .then((data) => res.send({ data }))
     .catch((err) => {
       if (err.name === 'CastError') {
-        next(new ErrorHandler('Переданы некорректные данные'));
+        next(new BadRequest('Переданы некорректные данные'));
         return;
       }
       next(err);
