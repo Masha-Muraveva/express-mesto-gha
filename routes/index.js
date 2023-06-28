@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const auth = require('../middlewares/auth');
+const { checkAuthorizedUser } = require('../middlewares/auth');
 const NotFound = require('../Error/NotFound');
 
 const signInRouter = require('./signin');
@@ -10,9 +10,8 @@ const usersRouter = require('./users');
 router.use('/', signInRouter);
 router.use('/', signUpRouter);
 
-router.use(auth);
-router.use('/users', usersRouter);
-router.use('/cards', cardsRouter);
+router.use('/users', checkAuthorizedUser, usersRouter);
+router.use('/cards', checkAuthorizedUser, cardsRouter);
 router.use((req, res, next) => next(new NotFound('Страницы по данному URL не существует')));
 
 module.exports = router;

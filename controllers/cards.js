@@ -1,6 +1,3 @@
-const { ValidationError } = require('mongoose').Error;
-const { CastError } = require('mongoose').Error;
-
 const Forbidden = require('../Error/Forbidden');
 const NotFound = require('../Error/NotFound');
 const BadRequest = require('../Error/BadRequest');
@@ -20,14 +17,14 @@ module.exports.getCards = (req, res, next) => {
 
 module.exports.createCard = (req, res, next) => {
   const { name, link } = req.body;
-  const { userId } = req.user;
+  const owner = req.user._id;
 
   Card
-    .create({ name, link, owner: userId })
+    .create({ name, link, owner })
     .then((card) => card.populate('owner'))
-    .then((card) => res.status(CODE_CREATED).send({ data: card }))
+    .then((card) => res.status(CODE_CREATED).send(card))
     .catch((err) => {
-      if (err instanceof ValidationError) {
+      if (err.name === 'ValidationError') {
         next(
           new BadRequest('Переданы некорректные данные при создании карточки'),
         );
@@ -38,70 +35,70 @@ module.exports.createCard = (req, res, next) => {
 };
 
 module.exports.deleteCard = (req, res, next) => {
-  const { id: cardId } = req.params;
-  const { userId } = req.user;
-
   Card
-    .findById({ _id: cardId })
-    .then((card) => {
-      if (!card) {
-        throw new NotFound('Карточка с указанным _id не найдена');
-      }
-      const { owner: cardOwnerId } = card;
-      if (cardOwnerId.valueOf() !== userId) {
-        throw new Forbidden('Нет доступа для удаления данной карточки - её создал другой пользователь');
-      }
-      return Card.findByIdAndDelete(cardId);
-    })
-    .catch(next);
-};
-
-module.exports.likeCard = (req, res, next) => {
-  const { cardId } = req.params;
-  const { userId } = req.user;
-
-  Card
-    .findByIdAndUpdate(
-      cardId,
-      { $addToSet: { likes: userId } },
-      { new: true },
-    )
-    .then((card) => {
-      if (card) {
-        return res.send({ data: card });
-      }
+    .findById(req.params.cardId)
+    .orFail(() => {
       throw new NotFound('Карточка с указанным _id не найдена');
     })
-    .catch((err) => {
-      if (err instanceof CastError) {
-        next(new BadRequest('Переданы некорректные данные для постановки/снятия лайка'));
+    .then((card) => {
+      const owner = card.owner.toString();
+      if (req.user._id === owner) {
+        Card.deleteOne(card)
+          .then(() => {
+            res.send(card);
+          })
+          .catch(next);
       } else {
-        next(err);
+        throw new Forbidden('Нет доступа для удаления данной карточки - её создал другой пользователь');
+      }
+    })
+    .catch((e) => {
+      if (e.name === 'CastError') {
+        next(new BadRequest('Переданы некорректные данные удаления'));
+      } else {
+        next(e);
       }
     });
 };
 
-module.exports.dislikeCard = (req, res, next) => {
-  const { cardId } = req.params;
-  const { userId } = req.user;
-
+module.exports.likeCard = (req, res, next) => {
   Card
     .findByIdAndUpdate(
-      cardId,
-      { $pull: { likes: userId } },
+      req.params.cardId,
+      { $addToSet: { likes: req.user._id } },
       { new: true },
     )
     .then((card) => {
-      if (card) {
-        return res.send({ data: card });
+      if (!card) {
+        throw new NotFound('Карточка с указанным _id не найдена');
       }
-      throw new NotFound('Карточка с указанным _id не найдена');
+      res.send({ data: card });
     })
     .catch((err) => {
-      if (err instanceof CastError) {
-        next(new BadRequest('Переданы некорректные данные для постановки/снятия лайка'));
-      } else {
-        next(err);
+      if (err.name === 'CastError') {
+        return next(new BadRequest('Переданы некорректные данные для постановки/снятия лайка'));
       }
+      return next(err);
+    });
+};
+
+module.exports.dislikeCard = (req, res, next) => {
+  Card
+    .findByIdAndUpdate(
+      req.params.cardId,
+      { $pull: { likes: req.user._id } },
+      { new: true },
+    )
+    .then((card) => {
+      if (!card) {
+        throw new NotFound('Карточка с указанным _id не найдена');
+      }
+      return res.send({ data: card });
+    })
+    .catch((err) => {
+      if (err.name === 'CastError') {
+        return next(new BadRequest('Переданы некорректные данные для постановки/снятия лайка'));
+      }
+      return next(err);
     });
 };

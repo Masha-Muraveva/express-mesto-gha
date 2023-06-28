@@ -8,7 +8,7 @@ const {
 const Unauthorized = require('../Error/Unauthorized');
 const BadRequest = require('../Error/BadRequest');
 const Conflict = require('../Error/Conflict');
-const config = require('../config');
+// const config = require('../config');
 
 module.exports.createUser = (req, res, next) => {
   const {
@@ -23,21 +23,24 @@ module.exports.createUser = (req, res, next) => {
       email,
       password: hash,
     }))
-    .then((user) => {
-      const { _id } = user;
-      return res.status(CODE_CREATED).send({
-        name,
-        about,
-        avatar,
-        email,
-        _id,
-      });
-    })
+    .then(() => res.status(CODE_CREATED).send(
+      {
+        data: {
+          name,
+          about,
+          avatar,
+          email,
+        },
+      },
+    ))
     .catch((err) => {
       if (err.code === 11000) {
-        throw new Conflict('Пользователь с такими данными уже существует');
+        return next(new Conflict('Пользователь с такими данными уже существует'));
       }
-      throw new BadRequest('Данные пользователя введены некоректно');
+      if (err.name === 'ValidationError') {
+        return next(new BadRequest('Данные пользователя введены некоректно'));
+      }
+      return next(err);
     })
     .catch(next);
 };
@@ -46,12 +49,22 @@ module.exports.login = (req, res, next) => {
   const { email, password } = req.body;
 
   User
-    .findUserByCredentials(email, password)
-    .then(({ _id: userId }) => {
-      const token = jwt.sign({ userId }, config.SECRET_KEY, { expiresIn: '7d' });
-      return res.send({ token });
+    .findOne({ email }).select('+password')
+    .then((user) => {
+      if (!user) {
+        return Promise.reject(new Unauthorized('Неправильные почта или пароль'));
+      }
+      return bcrypt.compare(password, user.password)
+        .then((matched) => {
+          if (!matched) {
+            return Promise.reject(new Unauthorized('Неправильные почта или пароль'));
+          }
+          return res.send({
+            token: jwt.sign({ _id: user._id }, 'some-secret-key', { expiresIn: '7d' }),
+          });
+        });
     })
-    .catch(() => {
-      next(new Unauthorized('Необходимо зарегистрироваться'));
+    .catch((err) => {
+      next(err);
     });
 };
