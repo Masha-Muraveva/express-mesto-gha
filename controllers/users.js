@@ -23,8 +23,8 @@ const findUserById = (id) => User.findById(id).then((user) => {
 });
 
 module.exports.getUserId = (req, res, next) => {
-  const { id } = req.params;
-  findUserById(id)
+  const { _id } = req.user;
+  findUserById(_id)
     .then((user) => res.send({ user }))
     .catch((err) => {
       if (err.name === 'CastError') {
@@ -38,14 +38,14 @@ module.exports.getUserId = (req, res, next) => {
 };
 
 module.exports.getInfoProfile = (req, res, next) => {
-  const { userId } = req.user;
+  const { _id } = req.user;
 
-  findUserById(userId)
+  findUserById(_id)
     .then((user) => res.send({ user }))
     .catch(next);
 };
 
-const updateUserData = (userId, data) => User.findByIdAndUpdate(userId, data, {
+const updateUserData = (id, data) => User.findByIdAndUpdate(id, data, {
   new: true,
   runValidators: true,
 })
@@ -64,18 +64,18 @@ const updateUserData = (userId, data) => User.findByIdAndUpdate(userId, data, {
 
 module.exports.updateProfile = (req, res, next) => {
   const { name, about } = req.body;
-  const { userId } = req.user;
+  const { _id } = req.user;
 
-  updateUserData(userId, { name, about })
+  updateUserData(_id, { name, about })
     .then((user) => res.send({ user }))
     .catch((err) => next(err));
 };
 
 module.exports.updateAvatar = (req, res, next) => {
   const { avatar } = req.body;
-  const { userId } = req.user;
+  const { _id } = req.user;
 
-  updateUserData(userId, { avatar })
+  updateUserData(_id, { avatar })
     .then((user) => res.send({ user }))
     .catch((err) => next(err));
 };

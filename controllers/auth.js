@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
@@ -9,6 +11,8 @@ const Unauthorized = require('../Error/Unauthorized');
 const BadRequest = require('../Error/BadRequest');
 const Conflict = require('../Error/Conflict');
 // const config = require('../config');
+
+const { NODE_ENV, JWT_SECRET } = process.env;
 
 module.exports.createUser = (req, res, next) => {
   const {
@@ -23,13 +27,14 @@ module.exports.createUser = (req, res, next) => {
       email,
       password: hash,
     }))
-    .then(() => res.status(CODE_CREATED).send(
+    .then((user) => res.status(CODE_CREATED).send(
       {
         data: {
-          name,
-          about,
-          avatar,
-          email,
+          name: user.name,
+          about: user.about,
+          avatar: user.avatar,
+          email: user.email,
+          _id: user._id,
         },
       },
     ))
@@ -60,7 +65,7 @@ module.exports.login = (req, res, next) => {
             return Promise.reject(new Unauthorized('Неправильные почта или пароль'));
           }
           return res.send({
-            token: jwt.sign({ _id: user._id }, 'some-secret-key', { expiresIn: '7d' }),
+            token: jwt.sign({ _id: user._id }, NODE_ENV === 'production' ? JWT_SECRET : 'some-secret-key', { expiresIn: '7d' }),
           });
         });
     })
